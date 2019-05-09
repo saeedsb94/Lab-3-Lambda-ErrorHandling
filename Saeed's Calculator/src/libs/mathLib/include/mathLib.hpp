@@ -9,7 +9,7 @@ namespace Saeed_Calculator
 	class SingleOperation;
 
 	template <typename T>
-	class ExpressionParser {  };
+	class ExpressionParser ;
 
 	void RunCalculator();
 }

@@ -30,37 +30,39 @@ namespace Saeed_Calculator
 		std::string expr_;
 	};
 
-	template <typename T>
-	class SingleOperation 
+	struct Operator
 	{
+		///	Operator, one of the OPERATOR_* enum definitions
+		int type;
+		///	Operator precedence
+		int precedence;
+		///	'L' = left to right priority or 'R' = right to left priority
+		bool associativity;
+		Operator(int opr, int prec, int assoc) :
+			type(opr)
+		{}
+	};
 
-		struct Operator
-		{
-			///	Operator, one of the OPERATOR_* enum definitions
-			int type;
-			///	Operator precedence
-			int precedence;
-			///	'L' = left to right priority or 'R' = right to left priority
-			bool associativity;
-			Operator(int opr, int prec, int assoc) :
-				op(opr),
-				precedence(prec),
-				associativity(assoc)
-			{ }
-		};
+	template <typename T>
+	class SingleOperation
+	{
+		Operator mOperator;
+		std::vector<T> mArguments;
+		T mResult;
 
-		Operator currentOperation;
-		std::vector<T> arguments;
-		T result;
 	public:
-		SingleOperation(const Operator& opr, std::vector<const T&> args, T res) :
-			operation(opr), arguments(args), result(res)
+		SingleOperation(const Operator& opr, const std::vector<T>& args) :
+			currentOperation(opr), arguments(args)
 		{
-			Calculate();
+			
 		}
 		~SingleOperation()
 		{
 			arguments.clear;
+		}
+		T getOprResult() {
+			Calculate();
+			return mResult;
 		}
 	private:
 		//	Avilable Operator
@@ -80,7 +82,7 @@ namespace Saeed_Calculator
 
 		T Calculate() const
 		{
-			switch (operator_.type)
+			switch (currentOperation.type)
 			{
 			case OPERATOR_BITWISE_OR:
 				return arguments[0] | arguments[1];
@@ -108,6 +110,9 @@ namespace Saeed_Calculator
 			default:                      return 0;
 			}
 		}
+
+
+
 
 	};
 
@@ -181,14 +186,14 @@ namespace Saeed_Calculator
 		char getCharacter() const
 		{
 			if (!IsExpressionEnd())
-				return expr_[index_];
+				return mExpression[mExpressionIndex];
 			return 0;
 		}
 
 		/// Parse str at the current expression index.
 		/// @throw error if parsing fails.
 		///
-		void expect(const std::string & str)
+		void expect(const std::string& str)
 		{
 			if (expr_.compare(mExpressionIndex, str.size(), str) != 0)
 				unexpected();
@@ -219,7 +224,6 @@ namespace Saeed_Calculator
 		///
 		Operator parseOp()
 		{
-			eatSpaces();
 			switch (getCharacter())
 			{
 			case '|': index_++;     return Operator(OPERATOR_BITWISE_OR, 4, 'L');
@@ -239,165 +243,177 @@ namespace Saeed_Calculator
 			default:               return Operator(OPERATOR_NULL, 0, 'L');
 			}
 		}
-
-		static T getDigit()
+		// Convert the Char to digit
+		T getDigit() const
 		{
-			return getCharacter() - '0';
+				return getCharacter() - '0';
 		}
 		bool IsDigit(T d) {
-			return d <= 9 || d >= 0
-		};
+			return d <= 9 || d >= 0;
+		}
 
-		T getFraction() {
-			index_++; //read the '.' sympol
+		T getFraction(T d) {
+			mExpressionIndex++; //read the '.' sympol
 			T value = 0;
-			double coeff = 1;
-			for (T d = getDigit(); IsDigit(d); index_++) {
-				d = getDigit();
-				coeff /= 10;
-				value = value + d* coeff;
-			}
-
-			return value;
-		}
-
-		T getWhole_Number() {
-			T value = 0;
-			for (T d; IsDigit(d); index_++) {
-				d = getDigit();
-				value = value * 10 + d;
-			}
-			return value;
-		}
-
-		T parseNumber()
-		{
-			return getWhole_Number() + getFraction();
-		}
-
-
-		/// Parse an integer value at the current expression index.
-		/// The unary `+', `-' and `~' operators and opening
-		/// parentheses `(' cause recursion.
-		///
-		SingleOperation getOperation()
-		{
-			Operator op(OPERATOR_NULL, 0, 'L');
-			std::vector<T> args;
-			T opValue = 0;
-			eatSpaces();
-			switch (getCharacter())
-			{
-			case '0': case '1': case '2': case '3': case '4': case '5':
-			case '6': case '7': case '8': case '9': case '.':
-				val = parseNumber();
-				break;
-			case '(':
-				index_++;
-				val = parseExpr();
-				eatSpaces();
-				if (getCharacter() != ')')
-				{
-					if (!isEnd())
-						unexpected();
-					throw Saeed_Calculator::error(expr_, "Syntax error: `)' expected at end of expression");
-				}
-				index_++;
-				break;
-			case '~': index_++; val = ~parseValue(); break;
-			case '+': index_++; val = parseValue(); break;
-			case '-': index_++; val = parseValue() * static_cast<T>(-1);
-				break;
-			default: if (!isEnd())
+			T d = getDigit();
+			if (!IsDigit(d))
 				unexpected();
-				throw Saeed_Calculator::error(expr_, "Syntax error: value expected at end of expression");
+			T coeff = 1;
+			while (IsDigit(d)) {
+				coeff /= 10;
+				value = value + d * coeff;
+				mExpressionIndex++;
+				d = getDigit();
 			}
-			return SingleOperation(op, args, opValue);
-		}
 
-		/// Parse all operations of the current parenthesis
-		/// level and the levels above, when done
-		/// return the result (value).
-		///
-
-
-		T parseExpr()
-		{
-
-			getOperation()
-				// first parse value on the left
-				T value = parseValue();
-
-			while (!stack_.empty())
-			{
-				// parse an operator (+, -, *, ...)
-				Operator op(parseOp());
-				while (op.precedence < stack_.top().getPrecedence() || (
-					op.precedence == stack_.top().getPrecedence() &&
-					op.associativity == 'L'))
-				{
-					// end reached
-					if (stack_.top().isNull())
-					{
-						stack_.pop();
-						return value;
-					}
-					// do the calculation ("reduce"), producing a new value
-					value = calculate(stack_.top().value, value, stack_.top().op);
-					stack_.pop();
-				}
-
-				// store on stack_ and continue parsing ("shift")
-				stack_.push(OperatorValue(op, value));
-				// parse value on the right
-				value = parseValue();
-			}
-			return 0;
-		}
-		T checkZero(T value) const
-		{
-			if (value == 0)
-			{
-				std::string divOperators("/%");
-				std::size_t division = mExpressionIndex.find_last_of(divOperators, mExpressionIndex - 2);
-				std::ostringstream msg;
-				msg << "Parser error: division by 0";
-				if (division != std::string::npos)
-					msg << " (error token is \""
-					<< mExpressionIndex.substr(division, mExpressionIndex.size() - division)
-					<< "\")";
-				throw Saeed_Calculator::error(mExpressionIndex, msg.str());
-			}
 			return value;
 		}
 
-	};
-
-
-
-
-
-
-
-	void RunCalculator()
-	{
-		try
+		T getWhole_Number() 
 		{
-			std::string buffer;
-			ExpressionParser <double> parser;
-			std::cout << "Enter an expression to evaluate, or an empty line to quit." << std::endl;
-			while (std::getline(std::cin, buffer)) {
-				if (buffer[0] == '\0')
-					break;
-				parser.Evaluate(buffer);
-				std::cout << parser.GetAns() << std::endl;
+			T value = 0;
+			T d = getDigit();
+			while (IsDigit(d))
+			{				
+				value = value * 10 + d;
+				mExpressionIndex++;
+				d = getDigit();
 			}
+			return value;
 		}
-		catch (Saeed_Calculator::error & e)
+		
+	
+
+	T parseNumber()
+	{
+		T value = 0;
+		value += getWhole_Number();
+		if (getCharacter() == '.')
+			value += getFraction();
+		return value;
+	}
+
+
+	/// Parse an integer value at the current expression index.
+	/// The unary `+', `-' and `~' operators and opening
+	/// parentheses `(' cause recursion.
+	///
+	SingleOperation<T> getOperation()
+	{
+		Operator opr(OPERATOR_NULL);
+		std::vector<T> args;
+		switch (getCharacter())
 		{
-			std::cerr << e.what() << std::endl;
+		case '0': case '1': case '2': case '3': case '4': case '5':
+		case '6': case '7': case '8': case '9': case '.':
+			args.push_back(parseNumber());
+			break;
+		case '(':
+			mExpressionIndex++;
+			val = parseExpr();
+			eatSpaces();
+			if (getCharacter() != ')')
+			{
+				if (!isEnd())
+					unexpected();
+				throw Saeed_Calculator::error(expr_, "Syntax error: `)' expected at end of expression");
+			}
+			index_++;
+			break;
+		case '~': index_++; val = ~parseValue(); break;
+		case '+': index_++; val = parseValue(); break;
+		case '-': index_++; val = parseValue() * static_cast<T>(-1);
+			break;
+		default: if (!isEnd())
+			unexpected();
+			throw Saeed_Calculator::error(expr_, "Syntax error: value expected at end of expression");
+		}
+		return SingleOperation<T>(op, args);
+	}
+
+	/// Parse all operations of the current parenthesis
+	/// level and the levels above, when done
+	/// return the result (value).
+	///
+
+
+	T parseExpr()
+	{
+
+		SingleOperation<T> opr = getOperation();
+
+		mOperatorStack.push(SingleOperation<T>(Operator(OPERATOR_NULL), std::vector<T>(opr.getOprResult()));
+
+		while (!mOperatorStack.empty())
+		{
+			// parse an operator (+, -, *, ...)
+			Operator op(parseOp());
+			while (op.precedence < stack_.top().getPrecedence() || (
+				op.precedence == stack_.top().getPrecedence() &&
+				op.associativity == 'L'))
+			{
+				// end reached
+				if (stack_.top().isNull())
+				{
+					stack_.pop();
+					return value;
+				}
+				// do the calculation ("reduce"), producing a new value
+				value = calculate(stack_.top().value, value, stack_.top().op);
+				stack_.pop();
+			}
+
+			// store on stack_ and continue parsing ("shift")
+			stack_.push(OperatorValue(op, value));
+			// parse value on the right
+			value = parseValue();
+		}
+		return 0;
+	}
+	T checkZero(T value) const
+	{
+		if (value == 0)
+		{
+			std::string divOperators("/%");
+			std::size_t division = mExpressionIndex.find_last_of(divOperators, mExpressionIndex - 2);
+			std::ostringstream msg;
+			msg << "Parser error: division by 0";
+			if (division != std::string::npos)
+				msg << " (error token is \""
+				<< mExpressionIndex.substr(division, mExpressionIndex.size() - division)
+				<< "\")";
+			throw Saeed_Calculator::error(mExpressionIndex, msg.str());
+		}
+		return value;
+	}
+
+};
+
+
+
+
+
+
+
+void RunCalculator()
+{
+	try
+	{
+		std::string buffer;
+		ExpressionParser <double> parser;
+		std::cout << "Enter an expression to evaluate, or an empty line to quit." << std::endl;
+		while (std::getline(std::cin, buffer)) {
+			if (buffer[0] == '\0')
+				break;
+			parser.Evaluate(buffer);
+			std::cout << parser.GetAns() << std::endl;
 		}
 	}
+	catch (Saeed_Calculator::error & e)
+	{
+		std::cerr << e.what() << std::endl;
+	}
+}
 
 }
 
