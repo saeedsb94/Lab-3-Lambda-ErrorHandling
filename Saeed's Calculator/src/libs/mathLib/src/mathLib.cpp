@@ -1,4 +1,3 @@
-
 #include "mathLib.hpp"
 #include <stdexcept>
 #include <sstream>
@@ -10,6 +9,8 @@
 #include <cmath>
 #include <string>
 #include <iostream>
+
+
 namespace Saeed_Calculator
 {
 	class error : public std::runtime_error
@@ -19,9 +20,7 @@ namespace Saeed_Calculator
 			: std::runtime_error(message),
 			expr_(expr)
 		{ }
-#if __cplusplus < 201103L
-		~error() throw() { }
-#endif
+
 		std::string expression() const
 		{
 			return expr_;
@@ -30,390 +29,406 @@ namespace Saeed_Calculator
 		std::string expr_;
 	};
 
-	struct Operator
-	{
-		///	Operator, one of the OPERATOR_* enum definitions
-		int type;
-		///	Operator precedence
-		int precedence;
-		///	'L' = left to right priority or 'R' = right to left priority
-		bool associativity;
-		Operator(int opr, int prec, int assoc) :
-			type(opr)
-		{}
-	};
 
-	template <typename T>
-	class SingleOperation
-	{
-		Operator mOperator;
-		std::vector<T> mArguments;
-		T mResult;
+	class ExpressionParser {
+	private:
+
+		std::string mExpr;
+		int mPos;
+		double mRes;
+		std::vector<double> mMemory;
 
 	public:
-		SingleOperation(const Operator& opr, const std::vector<T>& args) :
-			currentOperation(opr), arguments(args)
+		ExpressionParser(std::string expr)
+			: mExpr(expr), mPos(0)
 		{
-			
+			PreProcessing();
+			mRes = evalute();
+			mMemory.push_back(0);
 		}
-		~SingleOperation()
+		~ExpressionParser()
 		{
-			arguments.clear;
+
 		}
-		T getOprResult() {
-			Calculate();
-			return mResult;
+		void Parse(std::string expr) {
+			mExpr = expr;
+			mPos = 0;
+			PreProcessing();
+			mRes = evalute();
+			mMemory[0] = mRes;
 		}
+		double GetAns() {
+			return mRes;
+		}
+
 	private:
-		//	Avilable Operator
+
+		//Operators Coding
 		enum
 		{
-			OPERATOR_NULL,
 			OPERATOR_ADDITION,       /// +
 			OPERATOR_SUBTRACTION,    /// -
 			OPERATOR_MULTIPLICATION, /// *
 			OPERATOR_DIVISION,       /// /
-			OPERATOR_MODULO,         /// % || mod
+			OPERATOR_MODULO,         /// %
 			OPERATOR_POWER,          /// ^
 			OPERATOR_ROOT,          /// sqrt
-			OPERATOR_INVERSE,          /// inv 1/X
-			OPERATOR_MEMORY,          /// Access Memory MR
+			OPERATOR_INVERSE,       /// 1/x
+			OPERATOR_READ_MEMORY,       /// MR
+			OPERATOR_WRITE_MEMORY,       ///MW
 		};
 
-		T Calculate() const
+		//Operator' precedence Coding
+		enum
 		{
-			switch (currentOperation.type)
+			LEVEL_0,	/// '+'	'-'
+			LEVEL_1,    ///	'*'	'/'	'%'
+			LEVEL_2,	/// '^'	'sqrt'	'1/x'
+			LEVEL_3,	/// 'MR'	'MW'
+			LEVEL_4,	/// '()'
+		};
+
+		struct Operator
+		{
+			int op;
+			int precedence;
+			char associativity;
+			int numParameters;
+			Operator(int opr, int prec, char assoc, int numPar) :
+				op(opr),
+				precedence(prec),
+				associativity(assoc),
+				numParameters(numPar)
+			{ }
+		};
+
+		void PreProcessing() {
+			for (int i = 0; i < mExpr.size(); i++)
 			{
-			case OPERATOR_BITWISE_OR:
-				return arguments[0] | arguments[1];
-			case OPERATOR_BITWISE_XOR:
-				return arguments[0] ^ arguments[1];
-			case OPERATOR_BITWISE_AND:
-				return arguments[0] & arguments[1];
-			case OPERATOR_BITWISE_SHL:
-				return arguments[0] << arguments[1];
-			case OPERATOR_BITWISE_SHR:
-				return arguments[0] >> arguments[1];
-			case OPERATOR_ADDITION:
-				return arguments[0] + arguments[1];
-			case OPERATOR_SUBTRACTION:
-				return arguments[0] - arguments[1];
-			case OPERATOR_MULTIPLICATION:
-				return arguments[0] * arguments[1];
-			case	OPERATOR_INVERSE:	          /// inv
-				return 1 / arguments[0];
-			case		OPERATOR_MEMORY:          /// inv
-				return mMemory[arguments[0]];
-				OPERATOR_EXPONENT        /// e, E
-			case OPERATOR_DIVISION:					return v1 / checkZero(v2);
-			case OPERATOR_MODULO:				return (int)v1 % (int)checkZero(v2);
-			default:                      return 0;
+				mExpr[i] = tolower(mExpr[i]);
+				if (mExpr[i] == ' ') {
+					mExpr.erase(i, 1);
+					i--;
+				}
 			}
-		}
-
-
-
-
-	};
-
-
-	template <typename T>
-	class ExpressionParser
-	{
-		/// Expression string
-		std::string mExpression;
-
-		/// Current expression index, incremented whilst parsing
-		std::size_t mExpressionIndex;
-
-		/// The current operator and its left value are pushed onto the stack if the operator on top of the stack has lower precedence.
-		std::stack<SingleOperation<T>> mOperatorStack;
-
-		/// the result of the current expression
-		T mAns;
-
-		///	Stored memory MR[n]
-		std::vector<T> mMemory;
-
-	public:
-		//	Constructor ExpressionParser
-		ExpressionParser()
-			: mAns(0), mExpression(""), mExpressionIndex(0)
-		{}
-		/// Evaluate an  arithmetic expression
-		/// @throw error if parsing fails.
-		void Evaluate(const std::string& expression)
-		{
-			T result = 0;
-			mExpressionIndex = 0;
-			mExpression = expression;
-			try
+			for (int i = 0; i < mExpr.size(); i++)
 			{
-				result = parseExpr();
-				if (!isEnd())
-					unexpected();
+				if (mExpr[i] == '(' && i != 0 && IsDigit(mExpr[i - 1])) {
+					mExpr.insert(i, "*");
+				}
 			}
-			catch (const Saeed_Calculator::error&)
-			{
-				while (!stack_.empty())
-					stack_.pop();
-				throw;
-			}
-			return result;
-		}
-		//returns the result of the last evaluated expression
-		T GetAns() const
-		{
-			return mAns;
-		}
-		~ExpressionParser()
-		{
-			mMemory.clear();
-		}
 
-	private:
-
-
-
-
-		bool IsExpressionEnd() const
-		{
-			return index_ >= expr_.size();
-		}
-
-		/// Returns the character at the current expression index or
-		/// 0 if the end of the expression is reached.
-		char getCharacter() const
-		{
-			if (!IsExpressionEnd())
-				return mExpression[mExpressionIndex];
-			return 0;
-		}
-
-		/// Parse str at the current expression index.
-		/// @throw error if parsing fails.
-		///
-		void expect(const std::string& str)
-		{
-			if (expr_.compare(mExpressionIndex, str.size(), str) != 0)
-				unexpected();
-			mExpressionIndex += str.size();
 		}
 
 		void unexpected() const
 		{
 			std::ostringstream msg;
-			msg << "Syntax error: unexpected token \""
-				<< expr_.substr(index_, expr_.size() - index_)
+			msg << "Equation after PreProcessing looks like :   "
+				<< mExpr << "\n"
+				<< "Syntax error: unexpected token \""
+				<< mExpr.substr(mPos, mExpr.size() - mPos)
 				<< "\" at index "
-				<< mExpressionIndex;
-			throw Saeed_Calculator::error(expr_, msg.str());
+				<< mPos;
+			throw Saeed_Calculator::error(mExpr, msg.str());
 		}
 
-		/// Eat all white space characters at the
-		/// current expression index.
-		///
-		void eatSpaces()
+		void expect(const std::string& str)
 		{
-			while (std::isspace(getCharacter()) != 0)
-				mExpressionIndex++;
-		}
-
-		/// Parse a binary operator at the current expression index.
-		/// @return Operator with precedence and associativity.
-		///
-		Operator parseOp()
-		{
-			switch (getCharacter())
-			{
-			case '|': index_++;     return Operator(OPERATOR_BITWISE_OR, 4, 'L');
-			case '&': index_++;     return Operator(OPERATOR_BITWISE_AND, 6, 'L');
-			case '<': expect("<<"); return Operator(OPERATOR_BITWISE_SHL, 9, 'L');
-			case '>': expect(">>"); return Operator(OPERATOR_BITWISE_SHR, 9, 'L');
-			case '+': index_++;     return Operator(OPERATOR_ADDITION, 10, 'L');
-			case '-': index_++;     return Operator(OPERATOR_SUBTRACTION, 10, 'L');
-			case '/': index_++;     return Operator(OPERATOR_DIVISION, 20, 'L');
-			case '%': index_++;     return Operator(OPERATOR_MODULO, 20, 'L');
-			case '*': index_++; if (getCharacter() != '*')
-				return Operator(OPERATOR_MULTIPLICATION, 20, 'L');
-				index_++;     return Operator(OPERATOR_POWER, 30, 'R');
-			case '^': index_++;     return Operator(OPERATOR_POWER, 30, 'R');
-			case 'e': index_++;     return Operator(OPERATOR_EXPONENT, 40, 'R');
-			case 'E': index_++;     return Operator(OPERATOR_EXPONENT, 40, 'R');
-			default:               return Operator(OPERATOR_NULL, 0, 'L');
-			}
-		}
-		// Convert the Char to digit
-		T getDigit() const
-		{
-				return getCharacter() - '0';
-		}
-		bool IsDigit(T d) {
-			return d <= 9 || d >= 0;
-		}
-
-		T getFraction(T d) {
-			mExpressionIndex++; //read the '.' sympol
-			T value = 0;
-			T d = getDigit();
-			if (!IsDigit(d))
+			if (mExpr.compare(mPos, str.size(), str) != 0)
 				unexpected();
-			T coeff = 1;
-			while (IsDigit(d)) {
+			mPos += str.size();
+		}
+
+		char getCharacter() {
+			return mExpr[mPos];
+		}
+
+		bool IsDigit(char c) {
+			return c <= '9' && c >= '0';
+		}
+
+		// Convert the Char to digit
+		short getDigit()
+		{
+			return getCharacter() - '0';
+		}
+
+		double getFraction() {
+			mPos++; //read the '.' sympol
+			double value = 0;
+			if (!IsDigit(getCharacter()))
+				unexpected();
+			double coeff = 1;
+			while (IsDigit(getCharacter())) {
+				double	d = getDigit();
 				coeff /= 10;
 				value = value + d * coeff;
-				mExpressionIndex++;
-				d = getDigit();
+				mPos++;
 			}
-
 			return value;
 		}
 
-		T getWhole_Number() 
+		double getWhole_Number()
 		{
-			T value = 0;
-			T d = getDigit();
-			while (IsDigit(d))
-			{				
+			double value = 0.0;
+			while (IsDigit(getCharacter()))
+			{
+				short d = getDigit();
 				value = value * 10 + d;
-				mExpressionIndex++;
-				d = getDigit();
+				mPos++;
+
 			}
 			return value;
 		}
-		
-	
 
-	T parseNumber()
-	{
-		T value = 0;
-		value += getWhole_Number();
-		if (getCharacter() == '.')
-			value += getFraction();
-		return value;
-	}
-
-
-	/// Parse an integer value at the current expression index.
-	/// The unary `+', `-' and `~' operators and opening
-	/// parentheses `(' cause recursion.
-	///
-	SingleOperation<T> getOperation()
-	{
-		Operator opr(OPERATOR_NULL);
-		std::vector<T> args;
-		switch (getCharacter())
+		double parseNumber()
 		{
-		case '0': case '1': case '2': case '3': case '4': case '5':
-		case '6': case '7': case '8': case '9': case '.':
-			args.push_back(parseNumber());
-			break;
-		case '(':
-			mExpressionIndex++;
-			val = parseExpr();
-			eatSpaces();
-			if (getCharacter() != ')')
-			{
-				if (!isEnd())
-					unexpected();
-				throw Saeed_Calculator::error(expr_, "Syntax error: `)' expected at end of expression");
-			}
-			index_++;
-			break;
-		case '~': index_++; val = ~parseValue(); break;
-		case '+': index_++; val = parseValue(); break;
-		case '-': index_++; val = parseValue() * static_cast<T>(-1);
-			break;
-		default: if (!isEnd())
-			unexpected();
-			throw Saeed_Calculator::error(expr_, "Syntax error: value expected at end of expression");
+			double value = 0.0;
+			value += getWhole_Number();
+			if (getCharacter() == '.')
+				value += getFraction();
+			return value;
 		}
-		return SingleOperation<T>(op, args);
-	}
 
-	/// Parse all operations of the current parenthesis
-	/// level and the levels above, when done
-	/// return the result (value).
-	///
-
-
-	T parseExpr()
-	{
-
-		SingleOperation<T> opr = getOperation();
-
-		mOperatorStack.push(SingleOperation<T>(Operator(OPERATOR_NULL), std::vector<T>(opr.getOprResult()));
-
-		while (!mOperatorStack.empty())
+		double checkZero(double value) const
 		{
-			// parse an operator (+, -, *, ...)
-			Operator op(parseOp());
-			while (op.precedence < stack_.top().getPrecedence() || (
-				op.precedence == stack_.top().getPrecedence() &&
-				op.associativity == 'L'))
+			if (value == 0)
 			{
-				// end reached
-				if (stack_.top().isNull())
+				std::string divOperators("/%");
+				std::size_t division = mExpr.find_last_of(divOperators, mPos - 2);
+				std::ostringstream msg;
+				msg << "Parser error: division by 0";
+				if (division != std::string::npos)
+					msg << " (error token is \""
+					<< mExpr.substr(division, mExpr.size() - division)
+					<< "\")";
+				throw Saeed_Calculator::error(mExpr, msg.str());
+			}
+			return value;
+		}
+
+		Operator parseOperation() {
+			//Get Operation or unexpexted
+			switch (getCharacter())
+			{
+			case '+':
+				mPos++;	return Operator(OPERATOR_ADDITION, LEVEL_1, 'L', 2);
+			case '-':
+				mPos++;	return Operator(OPERATOR_SUBTRACTION, LEVEL_1, 'L', 2);
+			case '/':
+				mPos++;	return Operator(OPERATOR_DIVISION, LEVEL_2, 'L', 2);
+			case '*':
+				mPos++;	return Operator(OPERATOR_MULTIPLICATION, LEVEL_2, 'L', 2);
+			case '%':
+				mPos++;	return Operator(OPERATOR_MODULO, LEVEL_2, 'L', 2);
+			case '^':
+				mPos++;	return Operator(OPERATOR_POWER, LEVEL_3, 'R', 2);
+			case '~':
+				expect("~(");	mPos--;	return Operator(OPERATOR_INVERSE, LEVEL_3, 'R', 1);
+			case 's':
+				expect("sqrt(");	mPos--;	return Operator(OPERATOR_ROOT, LEVEL_3, 'R', 1);
+			case 'm':
+				if ((mPos + 1) == mExpr.length())
 				{
-					stack_.pop();
-					return value;
+					mPos--;
+					unexpected();
 				}
-				// do the calculation ("reduce"), producing a new value
-				value = calculate(stack_.top().value, value, stack_.top().op);
-				stack_.pop();
+				else {
+					if (mExpr[mPos + 1] == 'r') {
+
+						expect("mr");
+						return Operator(OPERATOR_READ_MEMORY, LEVEL_4, 'R', 1);
+					}
+					else if (mExpr[mPos + 1] == 'w') {
+						expect("mw");
+						return Operator(OPERATOR_WRITE_MEMORY, LEVEL_4, 'R', 1);
+					}
+					else
+						unexpected();
+
+				}
+
+			default:               unexpected();
+			}
+		}
+
+		double calculate(double& v1, double& v2, const Operator& op)
+		{
+			switch (op.op)
+			{
+			case OPERATOR_ADDITION:       return v1 + v2;
+			case OPERATOR_SUBTRACTION:    return v1 - v2;
+			case OPERATOR_MULTIPLICATION: return v1 * v2;
+			case OPERATOR_DIVISION:       return v1 / checkZero(v2);
+			case OPERATOR_MODULO:         return (int)((int)v1 % (int)checkZero(v2));
+			case OPERATOR_POWER:          return pow(v1, v2);
+			case OPERATOR_ROOT:          return sqrt(v1);
+			case OPERATOR_INVERSE:          return 1 / v1;
+			case OPERATOR_READ_MEMORY:
+				if (v1 >= mMemory.size() || v1 == 0)
+				{
+					std::ostringstream msg;
+					msg << "Parser error: Invalid INDEX";
+					throw Saeed_Calculator::error(mExpr, msg.str());
+				}
+				return mMemory[(int)v1];
+			case OPERATOR_WRITE_MEMORY:
+				if (v1 > mMemory.size() || v1 == 0)
+				{
+					std::ostringstream msg;
+					msg << "Parser error: Invalid INDEX";
+					throw Saeed_Calculator::error(mExpr, msg.str());
+				}
+				if (v1 == mMemory.size())
+					mMemory.push_back(mMemory[0]);
+				else
+					mMemory[(int)v1] = mMemory[0];
+
+				return 0.0;
+
+			default:                      return 0.0;
+			}
+		}
+
+
+		void terminate(std::stack<double>& parameters, std::stack<Operator>& operations) {
+			double val = 0.0;
+			while (!operations.empty()) {
+				//calculate
+				Operator op = operations.top();
+				double v1 = 0.0;
+				double v2 = 0.0;
+				operations.pop();
+				if (op.numParameters > parameters.size())
+				{
+					mPos--;
+					unexpected();
+				}
+				if (op.numParameters == 2) {
+					v2 = parameters.top();
+					parameters.pop();
+					v1 = parameters.top();
+					parameters.pop();
+				}
+				else
+				{
+					v1 = parameters.top();
+					parameters.pop();
+				}
+
+				if (op.op == OPERATOR_WRITE_MEMORY && parameters.size() > 1)
+				{
+					unexpected();
+				}
+				parameters.push(calculate(v1, v2, op));
+
 			}
 
-			// store on stack_ and continue parsing ("shift")
-			stack_.push(OperatorValue(op, value));
-			// parse value on the right
-			value = parseValue();
+
 		}
-		return 0;
-	}
-	T checkZero(T value) const
+
+		double evalute() {
+
+			std::stack<double> parameters;
+			std::stack<Operator> operations;
+
+
+
+
+			while (mPos < mExpr.length())
+			{
+				char c = mExpr[mPos];
+
+				if (c == '(') {
+					mPos++;
+					parameters.push(evalute());
+					//ADD Numbers	parseNumber()
+				}
+				else if (c == ')' || c == ']')
+				{
+					mPos++;
+					break;
+				}
+				else if (IsDigit(c))
+				{
+					parameters.push(parseNumber());
+					//ADD Numbers	parseNumber()
+				}
+				else
+				{
+
+					Operator op = parseOperation();
+
+					// Proccess the precedance
+					if ((!operations.empty()) && (op.precedence < operations.top().precedence || (op.precedence == operations.top().precedence && op.associativity == 'L')))
+						terminate(parameters, operations); //calc the top
+					//ADD Operation	parseOperation()
+					if ((op.op == OPERATOR_SUBTRACTION || op.op == OPERATOR_ADDITION) && parameters.empty())
+						parameters.push(0.0);
+
+					if ((op.op == OPERATOR_WRITE_MEMORY || op.op == OPERATOR_READ_MEMORY))
+					{
+						if (mExpr[mPos] != '[') {
+							parameters.push(1);
+						}
+						else
+						{
+							mPos++;
+							double tmp = evalute();
+							if (!(floor(tmp) == ceil(tmp)))
+							{
+								std::ostringstream msg;
+								msg << "Parser error: index must be INTEGER";
+								throw Saeed_Calculator::error(mExpr, msg.str());
+							}
+							else
+							{
+								parameters.push(tmp + 1);
+							}
+						}
+					}
+
+
+					operations.push(op);
+				}
+
+			}
+			terminate(parameters, operations);
+
+			if (parameters.size() != 1)
+				unexpected();
+			else
+				return parameters.top();
+		}
+	};
+
+	void RunCalculator()
 	{
-		if (value == 0)
+		try
 		{
-			std::string divOperators("/%");
-			std::size_t division = mExpressionIndex.find_last_of(divOperators, mExpressionIndex - 2);
-			std::ostringstream msg;
-			msg << "Parser error: division by 0";
-			if (division != std::string::npos)
-				msg << " (error token is \""
-				<< mExpressionIndex.substr(division, mExpressionIndex.size() - division)
-				<< "\")";
-			throw Saeed_Calculator::error(mExpressionIndex, msg.str());
+			std::string buffer = "0.0";
+			ExpressionParser  parser(buffer);
+			std::cout << "Enter an expression to evaluate, or an empty line to quit." << std::endl;
+			while (std::getline(std::cin, buffer)) {
+				if (buffer[0] == '\0')
+					break;
+				parser.Parse(buffer);
+				std::cout << parser.GetAns() << std::endl;
+			}
 		}
-		return value;
-	}
-
-};
-
-
-
-
-
-
-
-void RunCalculator()
-{
-	try
-	{
-		std::string buffer;
-		ExpressionParser <double> parser;
-		std::cout << "Enter an expression to evaluate, or an empty line to quit." << std::endl;
-		while (std::getline(std::cin, buffer)) {
-			if (buffer[0] == '\0')
-				break;
-			parser.Evaluate(buffer);
-			std::cout << parser.GetAns() << std::endl;
+		catch (Saeed_Calculator::error& e)
+		{
+			std::cerr << e.what() << std::endl;
 		}
 	}
-	catch (Saeed_Calculator::error & e)
+	bool Compare(std::string buffer, double res)
 	{
-		std::cerr << e.what() << std::endl;
+
+		Saeed_Calculator::ExpressionParser  parser(buffer);
+		return parser.GetAns() == res;
+
 	}
 }
 
-}
+
 

@@ -6,9 +6,6 @@ project(MainApp)
 file(GLOB APP_SOURCES *.cpp)
 
 #	export the binary results to bin folder
-#set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-
-#	export the binary results to bin folder
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/bin)
 
 #	export the binary results to bin folder
